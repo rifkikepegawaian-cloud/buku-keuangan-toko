@@ -45,12 +45,13 @@
 <body class="pb-24 text-gray-800">
 
     <div id="loginOverlay" class="fixed inset-0 z-50 bg-white flex flex-col items-center justify-center p-6">
-        <h1 class="text-2xl text-center font-bold mb-8">Buku Keuangan Toko Rifki PIN</h1>
-        <input type="password" id="pinInput" maxlength="4"
-            class="w-48 text-center text-3xl tracking-widest border-b-2 border-blue-500 outline-none p-2 mb-8"
-            placeholder="****">
-        <button onclick="checkPin()" id="btnLogin"
-            class="bg-blue-600 text-white px-10 py-3 rounded-full font-semibold btn-shadow">Masuk</button>
+        <h1 class="text-2xl text-center font-bold mb-8">Buku Keuangan Toko Rifki</h1>
+        <div class="w-full max-w-xs space-y-4 mb-8">
+            <input type="email" id="emailInput" class="w-full p-3 rounded-xl border bg-gray-50 outline-none focus:border-blue-500" placeholder="Email">
+            <input type="password" id="passwordInput" class="w-full p-3 rounded-xl border bg-gray-50 outline-none focus:border-blue-500" placeholder="Password">
+        </div>
+        <button onclick="loginSupabase()" id="btnLogin"
+            class="bg-blue-600 text-white px-10 py-3 rounded-full font-semibold btn-shadow w-full max-w-xs">Masuk ke Toko</button>
     </div>
 
     <div id="editModal" class="fixed inset-0 z-50 bg-black/50 hidden flex-col items-center justify-center p-6">
@@ -147,9 +148,15 @@
                         </select>
                     </div>
                 </div>
-                <div class="bg-gray-800 text-white p-2 rounded-xl text-xs font-semibold shadow-lg cursor-pointer"
-                    onclick="checkPin()">
-                    🔄 Segarkan
+                <div class="flex gap-2">
+                    <div class="bg-gray-800 text-white p-2 rounded-xl text-xs font-semibold shadow-lg cursor-pointer flex items-center"
+                        onclick="fetchData()">
+                        🔄 Segarkan
+                    </div>
+                    <div class="bg-red-600 text-white p-2 rounded-xl text-xs font-semibold shadow-lg cursor-pointer flex items-center"
+                        onclick="logoutSupabase()">
+                        🚪 Keluar
+                    </div>
                 </div>
             </div>
 
@@ -390,15 +397,49 @@
             return new Date(ts);
         }
 
-        async function checkPin() {
-            const pin = document.getElementById('pinInput').value;
-            // Gunakan PIN statis sementara (bisa dikembangkan menggunakan Auth Supabase nanti)
-            if (pin !== "1234") { alert("Masukkan PIN yang benar!"); return; }
+        // Cek sesi otomatis saat web dibuka
+        window.onload = async () => {
+            const { data: { session } } = await db.auth.getSession();
+            if (session) {
+                document.getElementById('loginOverlay').classList.add('hidden');
+                document.getElementById('app').classList.remove('hidden');
+                fetchData();
+            }
+        };
+
+        async function loginSupabase() {
+            const email = document.getElementById('emailInput').value;
+            const password = document.getElementById('passwordInput').value;
+
+            if (!email || !password) { alert("Masukkan email dan password!"); return; }
 
             document.getElementById('btnLogin').innerText = "Memuat...";
 
+            const { data, error } = await db.auth.signInWithPassword({
+                email: email,
+                password: password,
+            });
+
+            if (error) {
+                alert("Gagal login: " + error.message);
+                document.getElementById('btnLogin').innerText = "Masuk ke Toko";
+                return;
+            }
+
+            document.getElementById('loginOverlay').classList.add('hidden');
+            document.getElementById('app').classList.remove('hidden');
+            document.getElementById('btnLogin').innerText = "Masuk ke Toko";
+            fetchData();
+        }
+
+        async function logoutSupabase() {
+            await db.auth.signOut();
+            window.location.reload();
+        }
+
+        async function fetchData() {
             try {
-                // Fetch data dari Supabase
+                // Fetch data dari Supabase (Akan ditolak oleh RLS jika belum login)
                 const [resProducts, resTransactions] = await Promise.all([
                     db.from('products').select('*').order('created_at', { ascending: false }),
                     db.from('transactions').select('*').order('created_at', { ascending: false })
@@ -427,13 +468,9 @@
                     Keterangan: t.keterangan || t.pembeli || ''
                 }));
 
-                document.getElementById('loginOverlay').classList.add('hidden');
-                document.getElementById('app').classList.remove('hidden');
-                document.getElementById('btnLogin').innerText = "Masuk";
                 initData();
             } catch (error) {
-                alert("Gagal terhubung ke Database Supabase: " + error.message);
-                document.getElementById('btnLogin').innerText = "Masuk";
+                alert("Gagal mengambil data dari Supabase: " + error.message);
             }
         }
 
@@ -558,7 +595,7 @@
                 document.getElementById('bulkPrdJual').value = '';
                 document.getElementById('selectAllCheck').checked = false;
                 tutupBulkEdit();
-                checkPin();
+                fetchData();
             }
             btn.innerText = "Update Semua";
             btn.disabled = false;
@@ -760,7 +797,7 @@
             if (confirm("Yakin ingin menghapus transaksi ini secara permanen?")) {
                 const { error } = await db.from('transactions').delete().eq('id', id);
                 if (error) alert("Gagal: " + error.message);
-                else checkPin();
+                else fetchData();
             }
         }
 
@@ -797,7 +834,7 @@
             } else {
                 alert("Berhasil diupdate!");
                 tutupEditModal();
-                checkPin();
+                fetchData();
             }
             btn.innerText = "Simpan";
             btn.disabled = false;
@@ -807,7 +844,7 @@
             if (confirm("Yakin ingin menghapus produk ini?")) {
                 const { error } = await db.from('products').delete().eq('id', id);
                 if (error) alert("Gagal menghapus: " + error.message);
-                else checkPin();
+                else fetchData();
             }
         }
 
@@ -845,7 +882,7 @@
             } else {
                 alert("Produk berhasil diupdate!");
                 tutupEditModalProduk();
-                checkPin();
+                fetchData();
             }
 
             btn.innerText = "Simpan";
@@ -938,7 +975,7 @@
                 document.getElementById('inputNominal').value = '';
                 document.getElementById('inputKeterangan').value = '';
                 showPage('riwayat');
-                checkPin();
+                fetchData();
             }
 
             btn.innerText = "Simpan Transaksi";
